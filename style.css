@@ -216,9 +216,9 @@ body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spac
 .ozs-header .ozs-actions { gap: 0.5rem; }
 .ozs-header .ozs-register .wp-block-button__link { padding: 0.55rem 1.1rem; font-size: 0.95rem; }
 
-/* Wide screens: nav links, account icon (WooCommerce inserts its
- * customer-account block next to the navigation itself; it is not in
- * parts/header.html), Register button, cart, toggle.
+/* Wide screens: nav links, account icon, Register button, cart, toggle.
+ * The account icon is in parts/header.html explicitly: WooCommerce only
+ * sometimes auto-inserts it, and a fresh install got none.
  * Mobile: cart, toggle, then the hamburger at the far right edge; the nav
  * links, Account and Register are all inside the hamburger drawer. */
 @media (max-width: 599px) {
