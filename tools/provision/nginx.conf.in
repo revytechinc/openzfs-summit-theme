@@ -1,0 +1,91 @@
+# nginx for a WordPress site that may sit behind Cloudflare.
+# setup.sh fills in @FQDN@ and @WPPATH@. `certbot --nginx` later replaces the
+# two ssl_certificate lines with the Let's Encrypt paths.
+worker_processes auto;
+events { worker_connections 1024; }
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile      on;
+    server_tokens off;
+    client_max_body_size 64m;
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain application/xml;
+
+    # Real client addresses when proxied by Cloudflare, and $from_cloudflare
+    # (1 when the connection comes from a Cloudflare edge). Both are built
+    # by setup.sh from Cloudflare's published ranges.
+    include cloudflare-realip.conf;
+    include cloudflare-geo.conf;
+
+    # Work out the scheme the *visitor* used, whatever SSL mode the
+    # Cloudflare zone is in (Flexible reaches us on :80, Full on :443).
+    # CF-Visitor is believed only from Cloudflare itself; anyone else could
+    # send it to dodge the redirect or claim HTTPS.
+    map "$from_cloudflare:$http_cf_visitor" $cf_https {
+        default                    "";
+        "~^1:.*\"scheme\":\"https\""  on;
+    }
+    map "$scheme:$cf_https" $visitor_https {
+        default   "";
+        "~^https" on;
+        "~:on$"   on;
+    }
+    # Redirect only a visitor who really arrived over plain http. Under
+    # Flexible the edge talks http to us but CF-Visitor says https, so this
+    # never loops. The ACME challenge path is exempt: a server-level `if`
+    # runs before location matching and would otherwise swallow it.
+    map "$scheme:$cf_https:$uri" $needs_redirect {
+        default 0;
+        "~^http::(?!/\.well-known/acme-challenge/)" 1;
+    }
+
+    server {
+        listen 80;
+        listen [::]:80;
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        http2 on;
+        server_name @FQDN@;
+
+        ssl_certificate     ssl/site.fullchain.pem;
+        ssl_certificate_key ssl/site.key.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        root  @WPPATH@;
+        index index.php;
+
+        location ^~ /.well-known/acme-challenge/ {
+            root /usr/local/www/acme;
+            default_type text/plain;
+        }
+
+        if ($needs_redirect) { return 301 https://$host$request_uri; }
+
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header X-Frame-Options SAMEORIGIN always;
+
+        location = /xmlrpc.php { deny all; }
+        location ~ /\.(?!well-known) { deny all; }
+        location ~* ^/wp-content/uploads/.*\.php$ { deny all; }
+
+        location / { try_files $uri $uri/ /index.php?$args; }
+
+        location ~ \.php$ {
+            try_files $uri =404;
+            fastcgi_pass  unix:/var/run/php-fpm.sock;
+            fastcgi_index index.php;
+            include       fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param HTTPS $visitor_https;
+        }
+
+        location ~* \.(css|js|png|jpe?g|gif|svg|webp|avif|woff2?|ico)$ {
+            expires 30d;
+            access_log off;
+            try_files $uri /index.php?$args;
+        }
+    }
+}

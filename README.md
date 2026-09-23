@@ -63,29 +63,62 @@ Found under *OpenZFS Summit* in the block inserter.
 | About the Summit | description with three week-shape facts |
 | Summit days | four day cards, with the Hackathon highlighted |
 | Sponsors introduction | how to sponsor |
-| Sponsor tier | a tier label plus logo tiles; add the class `ozs-tier-diamond`, `-gold`, `-silver` or `-bronze` |
+| Sponsor tier | a tier label plus logo tiles; add ONE of the classes `ozs-tier-diamond`, `ozs-tier-gold`, `ozs-tier-silver` or `ozs-tier-bronze` to size the logos (mid size without one) |
 
 `tools/compose-pages.php` rebuilds the Home and Sponsors pages from these
-patterns and the sponsor logos in the media library, keeping the site's
-text verbatim:
+patterns and the sponsor logos in the media library, using the site's own
+text, and installs the site icon. See step 4 below.
+
+## Build a complete test site
+
+These steps build a copy of summit.openzfs.org running this theme in a
+FreeBSD Bastille jail. Run them from a checkout of this repository on a
+machine that can `ssh` to the jail's host and use `doas` there.
+
+**1. Create a jail** with network access. VNET is recommended, e.g.:
 
 ```sh
-wp eval-file tools/compose-pages.php
+doas bastille create -V <jail> 15.1-RELEASE <ipv4>/<prefix> <host-interface>
 ```
 
-## Test site content
-
-`tools/fetch-source.sh` downloads the public content of
-summit.openzfs.org into `source-snapshot/export/`, which git ignores.
-`tools/import-content.sh` then installs the same plugin versions as the
-source site and imports the pages, media, products, variations, menus and
-the My Calendar event into a WordPress site in a Bastille jail. The
-importer matches existing items, so it is safe to re-run.
+**2. Provision WordPress and install the theme.** This installs the
+packages from `tools/provision/packages.txt` and sets up MariaDB, PHP 8.4,
+nginx and WordPress 7.1.2. It then clones this theme from GitHub into the
+site and activates it.
 
 ```sh
-HOST=<jail host> WPUSER=<wp admin> tools/import-content.sh
-wp eval-file tools/compose-pages.php
+HOST=<jail host> JAIL=<jail> FQDN=<site name> ADMIN_EMAIL=<you@example.org>     tools/provision-jail.sh
 ```
+
+The WordPress admin user is `admin` (change it with `ADMIN_USER`). Its
+generated password is in `/root/.wpadmin` inside the jail.
+
+**3. Import the content** of summit.openzfs.org: pages, media, products and
+variations, menus, and the My Calendar event. It installs the same plugin
+versions as the source site and downloads the content into
+`source-snapshot/export/` first if that folder is missing. Re-running is
+safe: pages edited since the last import are kept unless
+`ZFS_IMPORT_FORCE=1`.
+
+```sh
+HOST=<jail host> JAIL=<jail> WPUSER=admin tools/import-content.sh
+```
+
+**4. Compose the Home and Sponsors pages** and set the site icon:
+
+```sh
+WPPATH=/usr/local/www/wordpress   # the same WPPATH as step 2
+ssh <jail host> "doas jexec <jail> su -m www -c 'cd $WPPATH && \
+    env HOME=/tmp wp eval-file wp-content/themes/openzfs-summit/tools/compose-pages.php'"
+```
+
+**5. HTTPS (optional).** Point DNS at the jail. Inside the jail, run
+`certbot --nginx -d <site name>`. The nginx config already serves
+`/.well-known/acme-challenge/` over plain HTTP, including behind a
+Cloudflare proxy, and works with any Cloudflare SSL mode.
+
+If you set a different `WPPATH` in step 2, use the same `WPPATH` in steps
+3 and 4.
 
 The shop archive leaves out the `registration` and `complimentary` product
 categories, because tickets are sold from the Registration page. Change

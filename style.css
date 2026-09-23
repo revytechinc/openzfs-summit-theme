@@ -90,7 +90,6 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 
 .wp-site-blocks { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .wp-site-blocks > main { flex: 1 0 auto; }
-.wp-site-blocks > footer { margin-block-start: 0; }
 /* WooCommerce's own block templates have no bottom padding before the footer. */
 body.woocommerce-page .wp-site-blocks > main,
 body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spacing--60); }
@@ -217,7 +216,9 @@ body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spac
 .ozs-header .ozs-actions { gap: 0.5rem; }
 .ozs-header .ozs-register .wp-block-button__link { padding: 0.55rem 1.1rem; font-size: 0.95rem; }
 
-/* Wide screens: nav links, account icon, Register button, cart, toggle.
+/* Wide screens: nav links, account icon (WooCommerce inserts its
+ * customer-account block next to the navigation itself; it is not in
+ * parts/header.html), Register button, cart, toggle.
  * Mobile: cart, toggle, then the hamburger at the far right edge; the nav
  * links, Account and Register are all inside the hamburger drawer. */
 @media (max-width: 599px) {
@@ -330,14 +331,8 @@ body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spac
 /* ------------------------------------------------------------------
  * Cards (summit days, facts, tickets)
  * ---------------------------------------------------------------- */
-.ozs-card {
-	background: var(--ozs-surface);
-	border: 1px solid var(--ozs-border);
-	border-radius: var(--ozs-radius);
-	box-shadow: var(--wp--preset--shadow--card);
-	height: 100%;
-}
-.ozs-card > :first-child { margin-top: 0; }
+.wp-block-group.is-style-ozs-card { height: 100%; }
+.wp-block-group.is-style-ozs-card > :first-child { margin-top: 0; }
 
 .ozs-day .ozs-day-date {
 	font-family: var(--ozs-mono);
@@ -363,6 +358,13 @@ body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spac
 .ozs-fact .ozs-fact-label { color: var(--ozs-muted); margin: 0.35rem 0 0; font-size: 0.95rem; }
 
 .ozs-section-muted { background: var(--ozs-surface); border-block: 1px solid var(--ozs-border); }
+
+/* About: below 1024px the text and the facts stack, so the three fact cards
+ * always get the full width instead of a squeezed side column. */
+@media (max-width: 1023px) {
+	.ozs-about-cols { flex-direction: column; align-items: stretch !important; }
+	.ozs-about-cols > .wp-block-column { flex-basis: 100% !important; }
+}
 
 /* Four day cards fill the row (auto-fit collapses empty tracks); facts stay 3-up. */
 .ozs-days { grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)) !important; }

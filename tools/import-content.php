@@ -15,7 +15,7 @@ if ( ! defined( 'WP_CLI' ) ) {
 }
 
 // eval-file runs this inside a method: bind shared state to globals.
-global $zfs_dir, $zfs_media;
+global $zfs_dir, $zfs_media, $zfs_unrewritten;
 $zfs_dir = isset( $args[0] ) ? rtrim( $args[0], '/' ) : '';
 if ( ! $zfs_dir || ! is_file( "$zfs_dir/pages.json" ) ) {
 	WP_CLI::error( 'usage: wp eval-file import-content.php <export_dir>' );
@@ -41,19 +41,51 @@ function zfs_log( $msg ) {
 	WP_CLI::log( $msg );
 }
 
+/** ZFS_IMPORT_FORCE=1: overwrite edited pages, re-apply one-time setup. */
+function zfs_forced() {
+	return '1' === getenv( 'ZFS_IMPORT_FORCE' );
+}
+
+/*
+ * One-time setup (site options, WooCommerce/front-page options, menus,
+ * removing "Hello world!") runs only on the first import, i.e. while the
+ * zfs_import_version marker option is absent, or when forced.
+ */
+const ZFS_IMPORT_VERSION = '1';
+$zfs_first_import        = ( false === get_option( 'zfs_import_version' ) ) || zfs_forced();
+if ( ! $zfs_first_import ) {
+	zfs_log( 'Not a first import (zfs_import_version set): skipping site options, menus and default-post cleanup (ZFS_IMPORT_FORCE=1 re-applies them)' );
+}
+
+/**
+ * Local file for a source media URL: basename plus a short hash of the full
+ * URL path, so equal basenames from different paths do not collide.
+ * Must match fetch-source.sh.
+ */
+function zfs_local_media_name( $url ) {
+	$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+	$name = basename( $path );
+	$dot  = strrpos( $name, '.' );
+	$stem = false === $dot ? $name : substr( $name, 0, $dot );
+	$ext  = false === $dot ? '' : substr( $name, $dot );
+	return $stem . '-' . substr( sha1( $path ), 0, 8 ) . $ext;
+}
+
 /* ------------------------------------------------------------------ */
 /* 1. Site options                                                     */
 /* ------------------------------------------------------------------ */
 $root = zfs_json( 'root.json' );
-update_option( 'blogname', 'OpenZFS Developer Summit' );
-update_option( 'blogdescription', (string) $root['description'] );
-// Source renders event times as -05:00 in late October => US Central.
-update_option( 'timezone_string', 'America/Chicago' );
-update_option( 'permalink_structure', '/%postname%/' );
-update_option( 'woocommerce_currency', 'USD' );
-update_option( 'woocommerce_coming_soon', 'no' );
-update_option( 'woocommerce_store_pages_only', 'no' );
-update_option( 'woocommerce_onboarding_profile', array( 'skipped' => true ) );
+if ( $zfs_first_import ) {
+	update_option( 'blogname', 'OpenZFS Developer Summit' );
+	update_option( 'blogdescription', (string) $root['description'] );
+	// Source renders event times as -05:00 in late October => US Central.
+	update_option( 'timezone_string', 'America/Chicago' );
+	update_option( 'permalink_structure', '/%postname%/' );
+	update_option( 'woocommerce_currency', 'USD' );
+	update_option( 'woocommerce_coming_soon', 'no' );
+	update_option( 'woocommerce_store_pages_only', 'no' );
+	update_option( 'woocommerce_onboarding_profile', array( 'skipped' => true ) );
+}
 
 /* ------------------------------------------------------------------ */
 /* 2. Media                                                            */
@@ -87,7 +119,7 @@ function zfs_remove_temp_file( $tmp ) {
 function zfs_sideload( $url, $title ) {
 	global $zfs_dir;
 	$id   = 0;
-	$file = "$zfs_dir/media/" . basename( $url );
+	$file = "$zfs_dir/media/" . zfs_local_media_name( $url );
 	if ( ! is_file( $file ) ) {
 		zfs_log( "  media missing locally, skipped: $url" );
 	} else {
@@ -149,23 +181,48 @@ foreach ( file( "$zfs_dir/media-urls.txt", FILE_IGNORE_NEW_LINES | FILE_SKIP_EMP
 	zfs_import_media( $u );
 }
 
-/** Rewrite every source upload/logo URL (incl. -WxH thumbnails) to local. */
+/**
+ * Rewrite every source upload/logo URL (incl. -WxH thumbnails) to local.
+ * URLs with no imported attachment are left as-is and counted in
+ * $zfs_unrewritten; zfs_upsert_page() refuses to write while any exist.
+ */
+$zfs_unrewritten = 0;
 function zfs_rewrite_urls( $html ) {
-	global $zfs_media;
 	return preg_replace_callback(
 		'#' . preg_quote( ZFS_SRC, '#' ) . '/wp-content/(?:uploads|logos)/[^"\'\s)]+#',
-		function ( $m ) use ( $zfs_media ) {
-			$u    = $m[0];
-			$base = preg_replace( '/-\d+x\d+(\.\w+)$/', '$1', $u );
-			foreach ( array( $u, $base ) as $k ) {
-				if ( isset( $zfs_media[ $k ] ) ) {
-					return wp_get_attachment_url( $zfs_media[ $k ] );
-				}
-			}
-			return $u;
-		},
+		'zfs_rewrite_one_url',
 		$html
 	);
+}
+
+function zfs_rewrite_one_url( $m ) {
+	global $zfs_media, $zfs_unrewritten;
+	$u    = $m[0];
+	$base = preg_replace( '/-\d+x\d+(\.\w+)$/', '$1', $u );
+	$key  = empty( $zfs_media[ $u ] ) ? $base : $u;
+	$url  = empty( $zfs_media[ $key ] ) ? '' : (string) wp_get_attachment_url( $zfs_media[ $key ] );
+	if ( '' !== $url ) {
+		return $url;
+	}
+	++$zfs_unrewritten;
+	zfs_log( "  could not rewrite source URL (no local attachment): $u" );
+	return $u;
+}
+
+/**
+ * Refuse to write a page that still points at the source site. Called before
+ * each page write and once at the end of the run; products, menus and events
+ * written earlier are not covered by this check.
+ */
+function zfs_check_rewrites() {
+	global $zfs_unrewritten;
+	if ( $zfs_unrewritten > 0 ) {
+		$msg = "$zfs_unrewritten source-site URL(s) could not be rewritten to local media";
+		if ( ! zfs_forced() ) {
+			WP_CLI::error( "$msg (see log above; ZFS_IMPORT_FORCE=1 writes them anyway)" );
+		}
+		zfs_log( "WARNING: $msg (forced)" );
+	}
 }
 
 $logo_url = ZFS_SRC . '/wp-content/uploads/openzfs-developer-summit-portland-logo-teal-alpha-150x150.96dpi.png';
@@ -365,7 +422,8 @@ foreach ( $src_products as $sp ) {
 			$v->set_attributes( array( 'pa_size' => $size ) );
 			$v->set_regular_price( zfs_price( $vj['prices']['regular_price'] ) );
 			if ( '' !== $vj['sku'] ) {
-				// SKUs must be unique; clear a stale owner first.
+				// SKUs are unique: if another product already owns this one,
+				// log it and leave this variation without a SKU.
 				$owner = wc_get_product_id_by_sku( $vj['sku'] );
 				if ( $owner && $owner !== $v->get_id() ) {
 					zfs_log( "  sku {$vj['sku']} already on #$owner, skipped" );
@@ -521,11 +579,29 @@ function zfs_content_hash( $content ) {
 	return hash( 'sha256', (string) $content );
 }
 
+/**
+ * Whether an existing page was edited by someone and must be kept.
+ * - With an import marker: edited when the content no longer matches it.
+ * - Without a marker: a stock page that was never modified since creation
+ *   (WordPress's "Sample Page", WooCommerce's shop/cart/checkout/account)
+ *   is NOT edited; otherwise it is edited unless it already equals ours.
+ */
 function zfs_page_was_edited( $existing, $content ) {
 	$current = zfs_content_hash( $existing->post_content );
 	$marker  = get_post_meta( $existing->ID, '_zfs_import_hash', true );
-	$edited  = $marker ? $marker !== $current : zfs_content_hash( $content ) !== $current;
-	return $edited && '1' !== getenv( 'ZFS_IMPORT_FORCE' );
+	if ( $marker ) {
+		$edited = $marker !== $current;
+	} else {
+		// Only the stock pages WordPress and WooCommerce create on install may be
+		// taken over, and only while never modified since creation (not "has no
+		// revisions": revisions can be switched off site-wide). Any other page
+		// without a marker is kept unless its content already matches.
+		$stock    = array( 'sample-page', 'shop', 'cart', 'checkout', 'my-account' );
+		$pristine = in_array( $existing->post_name, $stock, true )
+			&& $existing->post_modified_gmt === $existing->post_date_gmt;
+		$edited   = ! $pristine && zfs_content_hash( $content ) !== $current;
+	}
+	return $edited && ! zfs_forced();
 }
 
 function zfs_upsert_page( $slug, $title, $content, $date = null ) {
@@ -540,6 +616,7 @@ function zfs_upsert_page( $slug, $title, $content, $date = null ) {
 	if ( $date ) {
 		$arr['post_date'] = str_replace( 'T', ' ', $date );
 	}
+	zfs_check_rewrites();
 	if ( $existing && zfs_page_was_edited( $existing, $content ) ) {
 		zfs_log( "  page #{$existing->ID} /$slug/ edited since import, kept (ZFS_IMPORT_FORCE=1 overwrites)" );
 		$id = (int) $existing->ID;
@@ -887,20 +964,24 @@ $acct_c = ( $acct && '' !== trim( $acct->post_content ) ) ? $acct->post_content 
 $page_ids['my-account'] = zfs_upsert_page( 'my-account', html_entity_decode( $src_pages['my-account']['title']['rendered'] ), $acct_c, $src_pages['my-account']['date'] );
 $page_ids['shop']       = zfs_upsert_page( 'shop', html_entity_decode( $src_pages['shop']['title']['rendered'] ), '', $src_pages['shop']['date'] );
 
-update_option( 'woocommerce_shop_page_id', $page_ids['shop'] );
-update_option( 'woocommerce_cart_page_id', $page_ids['cart'] );
-update_option( 'woocommerce_checkout_page_id', $page_ids['checkout'] );
-update_option( 'woocommerce_myaccount_page_id', $page_ids['my-account'] );
-update_option( 'woocommerce_terms_page_id', $page_ids['c-terms'] );
+if ( $zfs_first_import ) {
+	update_option( 'woocommerce_shop_page_id', $page_ids['shop'] );
+	update_option( 'woocommerce_cart_page_id', $page_ids['cart'] );
+	update_option( 'woocommerce_checkout_page_id', $page_ids['checkout'] );
+	update_option( 'woocommerce_myaccount_page_id', $page_ids['my-account'] );
+	update_option( 'woocommerce_terms_page_id', $page_ids['c-terms'] );
 
-update_option( 'show_on_front', 'page' );
-update_option( 'page_on_front', $page_ids['home'] );
-update_option( 'page_for_posts', 0 );
+	update_option( 'show_on_front', 'page' );
+	update_option( 'page_on_front', $page_ids['home'] );
+	update_option( 'page_for_posts', 0 );
 
-// Source has no posts: remove the default "Hello world!" post.
-$hello = get_page_by_path( 'hello-world', OBJECT, 'post' );
-if ( $hello ) {
-	wp_delete_post( $hello->ID, true );
+	// Source has no posts: remove the default "Hello world!" post.
+	$hello = get_page_by_path( 'hello-world', OBJECT, 'post' );
+	if ( $hello ) {
+		wp_delete_post( $hello->ID, true );
+	}
+} else {
+	zfs_log( '  skipped WooCommerce page options, front-page options and "Hello world!" removal (not a first import)' );
 }
 
 /* ------------------------------------------------------------------ */
@@ -912,62 +993,70 @@ $menu_items = array(
 	array( 'Cart', 'cart' ),
 	array( 'Home', 'home' ),
 );
-$menu = wp_get_nav_menu_object( 'Primary' );
-$menu_id = $menu ? (int) $menu->term_id : (int) wp_create_nav_menu( 'Primary' );
-foreach ( (array) wp_get_nav_menu_items( $menu_id ) as $old ) {
-	wp_delete_post( $old->ID, true );
-}
-$pos = 1;
-foreach ( $menu_items as $mi ) {
-	wp_update_nav_menu_item(
-		$menu_id,
-		0,
-		array(
-			'menu-item-title'     => $mi[0],
-			'menu-item-object'    => 'page',
-			'menu-item-object-id' => $page_ids[ $mi[1] ],
-			'menu-item-type'      => 'post_type',
-			'menu-item-status'    => 'publish',
-			'menu-item-position'  => $pos++,
-		)
-	);
-}
-$locs = get_registered_nav_menus();
-if ( isset( $locs['primary'] ) ) {
-	$l            = (array) get_theme_mod( 'nav_menu_locations', array() );
-	$l['primary'] = $menu_id;
-	set_theme_mod( 'nav_menu_locations', $l );
-	zfs_log( "  menu Primary #$menu_id assigned to 'primary'" );
-} else {
-	zfs_log( "  menu Primary #$menu_id created; active theme has no 'primary' location yet (assign after theme switch)" );
-}
+if ( $zfs_first_import ) {
+	$menu = wp_get_nav_menu_object( 'Primary' );
+	$menu_id = $menu ? (int) $menu->term_id : (int) wp_create_nav_menu( 'Primary' );
+	foreach ( (array) wp_get_nav_menu_items( $menu_id ) as $old ) {
+		wp_delete_post( $old->ID, true );
+	}
+	$pos = 1;
+	foreach ( $menu_items as $mi ) {
+		wp_update_nav_menu_item(
+			$menu_id,
+			0,
+			array(
+				'menu-item-title'     => $mi[0],
+				'menu-item-object'    => 'page',
+				'menu-item-object-id' => $page_ids[ $mi[1] ],
+				'menu-item-type'      => 'post_type',
+				'menu-item-status'    => 'publish',
+				'menu-item-position'  => $pos++,
+			)
+		);
+	}
+	$locs = get_registered_nav_menus();
+	if ( isset( $locs['primary'] ) ) {
+		$l            = (array) get_theme_mod( 'nav_menu_locations', array() );
+		$l['primary'] = $menu_id;
+		set_theme_mod( 'nav_menu_locations', $l );
+		zfs_log( "  menu Primary #$menu_id assigned to 'primary'" );
+	} else {
+		zfs_log( "  menu Primary #$menu_id created; active theme has no 'primary' location yet (assign after theme switch)" );
+	}
 
-// Block-theme equivalent: a wp_navigation post with the same links.
-$nav_links = array();
-foreach ( $menu_items as $mi ) {
-	$pid         = $page_ids[ $mi[1] ];
-	$nav_links[] = '<!-- wp:navigation-link ' . wp_json_encode(
-		array(
-			'label' => $mi[0],
-			'type'  => 'page',
-			'id'    => $pid,
-			'url'   => get_permalink( $pid ),
-			'kind'  => 'post-type',
-		)
-	) . ' /-->';
+	// Block-theme equivalent: a wp_navigation post with the same links.
+	$nav_links = array();
+	foreach ( $menu_items as $mi ) {
+		$pid         = $page_ids[ $mi[1] ];
+		$nav_links[] = '<!-- wp:navigation-link ' . wp_json_encode(
+			array(
+				'label' => $mi[0],
+				'type'  => 'page',
+				'id'    => $pid,
+				'url'   => get_permalink( $pid ),
+				'kind'  => 'post-type',
+			)
+		) . ' /-->';
+	}
+	$nav = get_posts( array( 'post_type' => 'wp_navigation', 'name' => 'primary', 'post_status' => 'any', 'numberposts' => 1 ) );
+	$nav_arr = array(
+		'post_type'    => 'wp_navigation',
+		'post_status'  => 'publish',
+		'post_title'   => 'Primary',
+		'post_name'    => 'primary',
+		'post_content' => implode( "\n", $nav_links ),
+	);
+	if ( $nav ) {
+		$nav_arr['ID'] = $nav[0]->ID;
+	}
+	$nav_id = wp_insert_post( wp_slash( $nav_arr ) );
+} else {
+	$menu    = wp_get_nav_menu_object( 'Primary' );
+	$menu_id = $menu ? (int) $menu->term_id : 0;
+	$nav     = get_posts( array( 'post_type' => 'wp_navigation', 'name' => 'primary', 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) );
+	$nav_id  = $nav ? (int) $nav[0] : 0;
+	zfs_log( '  skipped menu rebuild (not a first import)' );
 }
-$nav = get_posts( array( 'post_type' => 'wp_navigation', 'name' => 'primary', 'post_status' => 'any', 'numberposts' => 1 ) );
-$nav_arr = array(
-	'post_type'    => 'wp_navigation',
-	'post_status'  => 'publish',
-	'post_title'   => 'Primary',
-	'post_name'    => 'primary',
-	'post_content' => implode( "\n", $nav_links ),
-);
-if ( $nav ) {
-	$nav_arr['ID'] = $nav[0]->ID;
-}
-$nav_id = wp_insert_post( wp_slash( $nav_arr ) );
 
 // Footer text as a synced pattern the theme can reference.
 $fp     = get_posts( array( 'post_type' => 'wp_block', 'name' => 'footer-copyright', 'post_status' => 'any', 'numberposts' => 1 ) );
@@ -989,7 +1078,7 @@ $footer_id = wp_insert_post( wp_slash( $fp_arr ) );
 $events = 0;
 if ( function_exists( 'mc_insert_event' ) ) {
 	global $wpdb;
-	if ( function_exists( 'mc_update_option' ) ) {
+	if ( $zfs_first_import && function_exists( 'mc_update_option' ) ) {
 		mc_update_option( 'uri_id', $page_ids['sessions'] );
 		mc_update_option( 'show_weekends', 'false' );
 	}
@@ -1038,8 +1127,10 @@ if ( function_exists( 'mc_insert_event' ) ) {
 			wp_update_post( array( 'ID' => $ep, 'post_status' => 'publish' ) );
 		}
 	}
-	// The source has only this event: drop My Calendar's install demo event.
-	foreach ( (array) $wpdb->get_col( $wpdb->prepare( "SELECT event_id FROM {$wpdb->prefix}my_calendar WHERE event_title <> %s", $title ) ) as $other ) {
+	// Drop only the demo event My Calendar creates on install
+	// (my-calendar-install.php); never touch any other event.
+	$demo_title = 'Demo: Florence Price: Symphony No. 3 in c minor';
+	foreach ( (array) $wpdb->get_col( $wpdb->prepare( "SELECT event_id FROM {$wpdb->prefix}my_calendar WHERE event_title = %s", $demo_title ) ) as $other ) {
 		$ep = $wpdb->get_var( $wpdb->prepare( "SELECT event_post FROM {$wpdb->prefix}my_calendar WHERE event_id = %d", $other ) );
 		if ( function_exists( 'mc_delete_event' ) ) {
 			mc_delete_event( (int) $other );
@@ -1050,7 +1141,7 @@ if ( function_exists( 'mc_insert_event' ) ) {
 		if ( $ep && get_post( $ep ) ) {
 			wp_delete_post( (int) $ep, true );
 		}
-		zfs_log( "  removed non-source My Calendar event #$other" );
+		zfs_log( "  removed My Calendar install demo event #$other" );
 	}
 	$events = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}my_calendar" );
 } else {
@@ -1058,6 +1149,9 @@ if ( function_exists( 'mc_insert_event' ) ) {
 }
 
 flush_rewrite_rules( false );
+zfs_log( "Source-site URLs not rewritten: $zfs_unrewritten" );
+zfs_check_rewrites();
+update_option( 'zfs_import_version', ZFS_IMPORT_VERSION, false );
 
 /* ------------------------------------------------------------------ */
 /* Summary                                                             */
@@ -1072,5 +1166,7 @@ $summary = array(
 	'wp_navigation_id'   => $nav_id,
 	'footer_pattern_id'  => $footer_id,
 	'mc_events'          => $events,
+	'unrewritten_urls'   => $zfs_unrewritten,
+	'first_import'       => $zfs_first_import,
 );
 WP_CLI::log( 'SUMMARY ' . wp_json_encode( $summary ) );

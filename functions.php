@@ -122,7 +122,10 @@ add_action( 'woocommerce_product_query', 'ozs_shop_excludes' );
  * Keep WooCommerce's classic stylesheets off: the blocks bring their own
  * styles and this theme maps them onto its tokens.
  */
-add_filter( 'woocommerce_enqueue_styles', function ( array $styles ): array {
-	unset( $styles['woocommerce-general'] );
+add_filter( 'woocommerce_enqueue_styles', function ( $styles ) {
+	// Another filter may already have returned false or '' (all styles off).
+	if ( is_array( $styles ) ) {
+		unset( $styles['woocommerce-general'] );
+	}
 	return $styles;
 } );

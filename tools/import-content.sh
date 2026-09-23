@@ -6,19 +6,52 @@
 #   HOST=<jail host> tools/import-content.sh # install plugins + import content
 #
 # HOST (the machine running the jail, reached over ssh with doas) is required.
-# Optional: JAIL, WPUSER.
+# Optional: JAIL, WPUSER, WPPATH (WordPress path inside the jail),
+# ZFS_IMPORT_FORCE=1 (overwrite pages edited since the last import, re-apply
+# one-time site setup, and proceed despite missing/unrewritable media).
 set -eu
 
+die() { echo "import-content.sh: $*" >&2; exit 1; }
+
 : "${HOST:?set HOST to the machine that runs the jail}"
-JAIL=${JAIL:-zfssummit}
+: "${JAIL:?set JAIL to the Bastille jail name}"
 WPUSER=${WPUSER:-admin}
-WPPATH=/usr/local/www/zfssummit
+WPPATH=${WPPATH:-/usr/local/www/wordpress}
+ZFS_IMPORT_FORCE=${ZFS_IMPORT_FORCE:-0}
+
+# These values are interpolated into ssh/doas/su command strings: allow only
+# plain names and absolute paths. grep matches per line, so a value holding a
+# newline is refused first.
+NL='
+'
+for v in "$HOST" "$JAIL" "$WPUSER" "$WPPATH" "$ZFS_IMPORT_FORCE"; do
+  case "$v" in *"$NL"*) die "values must not contain a newline" ;; esac
+done
+printf '%s' "$HOST" | grep -Eqx '[A-Za-z0-9._@-]+' || die "invalid HOST: $HOST (expected an ssh host name, letters digits . _ @ -)"
+printf '%s' "$JAIL" | grep -Eqx '[A-Za-z0-9_.-]+' || die "invalid JAIL: $JAIL (expected letters, digits, . _ -)"
+printf '%s' "$WPUSER" | grep -Eqx '[A-Za-z0-9_.-]+' || die "invalid WPUSER: $WPUSER (expected letters, digits, . _ -)"
+printf '%s' "$WPPATH" | grep -Eqx '/[A-Za-z0-9_./-]+' || die "invalid WPPATH: $WPPATH (expected an absolute path)"
+case "$WPPATH" in *..*) die "WPPATH must not contain '..': $WPPATH" ;; esac
+case "$ZFS_IMPORT_FORCE" in 0|1) ;; *) die "ZFS_IMPORT_FORCE must be 0 or 1" ;; esac
+
 JAILROOT=/usr/local/bastille/jails/$JAIL/root
 STAGE=/var/tmp/zfsimport
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 EXPORT="$HERE/../source-snapshot/export"
 [ -f "$EXPORT/pages.json" ] || "$HERE/fetch-source.sh"
+
+if [ -s "$EXPORT/media-dead.txt" ]; then
+  echo "WARNING: the source site itself returns 404/410 for these media URLs;" >&2
+  echo "         they cannot be imported. Continuing: no imported page is expected" >&2
+  echo "         to use them, and the import stops if one does:" >&2
+  sed 's/^/  /' "$EXPORT/media-dead.txt" >&2
+fi
+if [ -s "$EXPORT/media-missing.txt" ] && [ "$ZFS_IMPORT_FORCE" != 1 ]; then
+  echo "import-content.sh: these source media URLs failed to download:" >&2
+  sed 's/^/  /' "$EXPORT/media-missing.txt" >&2
+  die "refusing to import with missing media (re-run fetch-source.sh, or set ZFS_IMPORT_FORCE=1)"
+fi
 
 # Plugins: same versions as the source site (see report / readme probes).
 # slug:version:activate(1/0)
@@ -49,12 +82,14 @@ for spec in $(echo $PLUGINS); do
   if [ "\$cur" != "\$ver" ]; then
     wp plugin install \$slug --version=\$ver --force
   fi
-  if [ "\$act" = 1 ]; then wp plugin activate \$slug || true; fi
+  if [ "\$act" = 1 ] && ! wp plugin is-active \$slug; then
+    wp plugin activate \$slug
+  fi
 done
 wp plugin list --fields=name,status,version
 EOF
 
 echo "==> content"
-ssh "$HOST" "doas jexec $JAIL su -m www -c 'env HOME=/tmp ZFS_IMPORT_FORCE=${ZFS_IMPORT_FORCE:-0} /usr/local/bin/wp --path=$WPPATH eval-file $STAGE/import-content.php $STAGE/export --user=$WPUSER'"
+ssh "$HOST" "doas jexec $JAIL su -m www -c 'env HOME=/tmp ZFS_IMPORT_FORCE=$ZFS_IMPORT_FORCE /usr/local/bin/wp --path=$WPPATH eval-file $STAGE/import-content.php $STAGE/export --user=$WPUSER'"
 ssh "$HOST" "doas jexec $JAIL su -m www -c 'env HOME=/tmp /usr/local/bin/wp --path=$WPPATH cache flush'" || true
 echo "==> done"
