@@ -1,0 +1,722 @@
+/*
+Theme Name: OpenZFS Summit
+Theme URI: https://github.com/revytechinc/openzfs-summit-theme
+Author: REVYTECH, Inc.
+Author URI: https://revytechinc.com/
+Description: Block theme for the OpenZFS User & Developer Summit. Light and dark modes (follows the visitor's system setting, with a persistent toggle), sponsor tiers, summit-day cards, ticket cards, and native-looking WooCommerce and My Calendar pages.
+Requires at least: 6.6
+Tested up to: 7.1
+Requires PHP: 8.1
+Version: 1.0.0
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: openzfs-summit
+Tags: block-theme, full-site-editing, one-column, wide-blocks, custom-logo, custom-menu, editor-style, e-commerce, accessibility-ready
+*/
+
+/* ------------------------------------------------------------------
+ * Dark palette. theme.json defines the light values; these override the
+ * same preset variables, so every block using a preset follows the mode.
+ * [data-theme] is set by the toggle (explicit choice); with no explicit
+ * choice the system preference applies.
+ * ---------------------------------------------------------------- */
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--wp--preset--color--base: #0b0f14;
+	--wp--preset--color--surface: #161e27;
+	--wp--preset--color--contrast: #f1f5f9;
+	--wp--preset--color--muted: #94a3b8;
+	--wp--preset--color--border: #283545;
+	--wp--preset--color--accent: #57b9a8;
+	--wp--preset--color--accent-hover: #72cfbf;
+	--wp--preset--color--on-accent: #0b0f14;
+	--wp--preset--color--accent-soft: #12302e;
+	--wp--preset--color--highlight: #fbbf24;
+	--wp--preset--color--logo-tile: #f1f5f9;
+	--wp--preset--shadow--card: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 30%);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+		--wp--preset--color--base: #0b0f14;
+		--wp--preset--color--surface: #161e27;
+		--wp--preset--color--contrast: #f1f5f9;
+		--wp--preset--color--muted: #94a3b8;
+		--wp--preset--color--border: #283545;
+		--wp--preset--color--accent: #57b9a8;
+		--wp--preset--color--accent-hover: #72cfbf;
+		--wp--preset--color--on-accent: #0b0f14;
+		--wp--preset--color--accent-soft: #12302e;
+		--wp--preset--color--highlight: #fbbf24;
+		--wp--preset--color--logo-tile: #f1f5f9;
+		--wp--preset--shadow--card: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 30%);
+	}
+}
+
+/* Short aliases used below. */
+:root {
+	color-scheme: light;
+	--ozs-base: var(--wp--preset--color--base);
+	--ozs-surface: var(--wp--preset--color--surface);
+	--ozs-text: var(--wp--preset--color--contrast);
+	--ozs-muted: var(--wp--preset--color--muted);
+	--ozs-border: var(--wp--preset--color--border);
+	--ozs-accent: var(--wp--preset--color--accent);
+	--ozs-accent-hover: var(--wp--preset--color--accent-hover);
+	--ozs-on-accent: var(--wp--preset--color--on-accent);
+	--ozs-accent-soft: var(--wp--preset--color--accent-soft);
+	--ozs-radius: 12px;
+	--ozs-mono: var(--wp--preset--font-family--mono);
+}
+
+/* ------------------------------------------------------------------
+ * Base
+ * ---------------------------------------------------------------- */
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+	outline: 2px solid var(--ozs-accent);
+	outline-offset: 3px;
+	border-radius: 4px;
+}
+
+.skip-link.screen-reader-text:focus {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+}
+
+::selection { background: var(--ozs-accent); color: var(--ozs-on-accent); }
+
+.wp-site-blocks { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.wp-site-blocks > main { flex: 1 0 auto; }
+.wp-site-blocks > footer { margin-block-start: 0; }
+/* WooCommerce's own block templates have no bottom padding before the footer. */
+body.woocommerce-page .wp-site-blocks > main,
+body.woocommerce .wp-site-blocks > main { padding-bottom: var(--wp--preset--spacing--60); }
+
+.is-style-ozs-mono,
+.ozs-mono { font-family: var(--ozs-mono); letter-spacing: 0; }
+
+/* ------------------------------------------------------------------
+ * Header
+ * ---------------------------------------------------------------- */
+.ozs-header {
+	position: sticky;
+	top: 0;
+	z-index: 50;
+	border-bottom: 1px solid var(--ozs-border);
+}
+/* The translucent blur lives on a pseudo-element. backdrop-filter on the
+ * header itself would make the header the containing block for the mobile
+ * menu's position:fixed overlay, trapping the open menu inside the header. */
+.ozs-header::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--ozs-base) 88%, transparent);
+	-webkit-backdrop-filter: saturate(160%) blur(10px);
+	backdrop-filter: saturate(160%) blur(10px);
+}
+.admin-bar .ozs-header { top: var(--wp-admin--admin-bar--height, 0px); }
+
+.ozs-header .wp-block-site-logo img { height: auto; }
+
+/* The logo is dark-teal/grey artwork on transparent: give it a light tile in
+ * dark mode rather than inverting it. */
+:root[data-theme="dark"] .ozs-header .wp-block-site-logo a,
+:root[data-theme="dark"] .ozs-footer .wp-block-site-logo a {
+	display: inline-block;
+	background: var(--wp--preset--color--logo-tile);
+	border-radius: 10px;
+	padding: 4px;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) .ozs-header .wp-block-site-logo a,
+	:root:not([data-theme="light"]) .ozs-footer .wp-block-site-logo a {
+		display: inline-block;
+		background: var(--wp--preset--color--logo-tile);
+		border-radius: 10px;
+		padding: 4px;
+	}
+}
+
+.ozs-header .wp-block-navigation a:where(:not(.wp-element-button)) {
+	color: var(--ozs-text);
+	padding: 0.35rem 0.1rem;
+	border-bottom: 2px solid transparent;
+}
+.ozs-header .wp-block-navigation a:where(:not(.wp-element-button)):hover,
+.ozs-header .wp-block-navigation .current-menu-item > a {
+	border-bottom-color: var(--ozs-accent);
+	color: var(--ozs-text);
+}
+
+/* Mobile menu: full-screen drawer, links stacked on one left edge, Register
+ * as a full-width button at the end. The core block paints the open drawer
+ * white/black via .wp-block-navigation:not(.has-background) ..., so these
+ * carry !important to follow the theme in dark mode. */
+.ozs-header .wp-block-navigation .wp-block-navigation__responsive-container.is-menu-open {
+	background: var(--ozs-base) !important;
+	color: var(--ozs-text) !important;
+	padding: 1rem clamp(1rem, 4vw, 2rem) 2rem !important;
+}
+.ozs-header .is-menu-open .wp-block-navigation__responsive-container-content,
+.ozs-header .is-menu-open .wp-block-navigation__container {
+	align-items: stretch !important;
+	gap: 0 !important;
+	width: 100%;
+	margin: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+}
+.ozs-header .is-menu-open .wp-block-navigation__responsive-container-content { padding-top: 3.5rem !important; }
+.ozs-header .is-menu-open .wp-block-navigation-item {
+	width: 100%;
+	margin: 0 !important;
+	border-bottom: 1px solid var(--ozs-border);
+}
+.ozs-header .is-menu-open .wp-block-navigation-item__content {
+	display: block;
+	box-sizing: border-box;
+	position: static !important;
+	width: 100% !important;
+	max-width: 100%;
+	margin: 0 !important;
+	padding: 1rem 0 !important;
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: var(--ozs-text) !important;
+	border-bottom: 0 !important;
+}
+.ozs-header .is-menu-open .ozs-nav-register { border-bottom: 0; margin-top: 1.5rem !important; }
+.ozs-header .is-menu-open .ozs-nav-register .wp-block-navigation-item__content {
+	background: var(--ozs-accent);
+	color: var(--ozs-on-accent) !important;
+	border-radius: 10px;
+	text-align: center;
+	padding: 0.9rem 1rem !important;
+}
+.ozs-header .wp-block-navigation__responsive-container-close {
+	top: 0.5rem !important;
+	right: 0 !important;
+	color: var(--ozs-text) !important;
+}
+/* Only resize the menu buttons; whether they show is core's decision
+ * (the hamburger is display:none on wide screens). */
+.ozs-header .wp-block-navigation__responsive-container-open,
+.ozs-header .wp-block-navigation__responsive-container-close {
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	justify-content: center;
+	align-items: center;
+	color: var(--ozs-text);
+}
+
+.ozs-header .ozs-actions { gap: 0.5rem; }
+.ozs-header .ozs-register .wp-block-button__link { padding: 0.55rem 1.1rem; font-size: 0.95rem; }
+
+/* Wide screens: nav links, account icon, Register button, cart, toggle.
+ * Mobile: cart, toggle, then the hamburger at the far right edge; the nav
+ * links, Account and Register are all inside the hamburger drawer. */
+@media (max-width: 599px) {
+	.ozs-header .ozs-actions { gap: 0.25rem; }
+	.ozs-header .ozs-register,
+	.ozs-header .wp-block-woocommerce-customer-account { display: none; }
+	.ozs-header .ozs-actions > .wp-block-navigation { order: 99; }
+}
+@media (min-width: 600px) {
+	.ozs-header .ozs-nav-mobile-only { display: none; }
+}
+
+/* Mini-cart */
+.ozs-header .wc-block-mini-cart__button {
+	color: var(--ozs-text);
+	padding: 0.4rem;
+	border-radius: 8px;
+}
+.ozs-header .wc-block-mini-cart__button:hover { background: var(--ozs-accent-soft); }
+.wc-block-mini-cart__badge {
+	background: var(--ozs-accent) !important;
+	color: var(--ozs-on-accent) !important;
+	border-color: var(--ozs-base) !important;
+}
+.wc-block-components-drawer,
+.wc-block-mini-cart__drawer .components-modal__content {
+	background: var(--ozs-base);
+	color: var(--ozs-text);
+}
+
+/* ------------------------------------------------------------------
+ * Theme toggle
+ * ---------------------------------------------------------------- */
+.ozs-theme-toggle {
+	display: inline-grid;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	padding: 0;
+	border: 1px solid var(--ozs-border);
+	border-radius: 999px;
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.ozs-theme-toggle:hover { border-color: var(--ozs-accent); }
+@media (max-width: 599px) { .ozs-theme-toggle { width: 2.75rem; height: 2.75rem; } }
+.ozs-theme-toggle svg { width: 1.2rem; height: 1.2rem; }
+.ozs-theme-toggle .ozs-icon-sun { display: none; }
+:root[data-theme="dark"] .ozs-theme-toggle .ozs-icon-sun { display: block; }
+:root[data-theme="dark"] .ozs-theme-toggle .ozs-icon-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) .ozs-theme-toggle .ozs-icon-sun { display: block; }
+	:root:not([data-theme="light"]) .ozs-theme-toggle .ozs-icon-moon { display: none; }
+}
+
+/* ------------------------------------------------------------------
+ * Hero
+ * ---------------------------------------------------------------- */
+.ozs-hero {
+	position: relative;
+	overflow: hidden;
+	border-bottom: 1px solid var(--ozs-border);
+	background:
+		radial-gradient(60rem 30rem at 85% -10%, color-mix(in srgb, var(--ozs-accent) 16%, transparent), transparent 70%),
+		radial-gradient(40rem 24rem at -10% 110%, color-mix(in srgb, var(--ozs-accent) 10%, transparent), transparent 70%),
+		var(--ozs-base);
+}
+/* A faint grid of dots, echoing the logo's dissolving block. */
+.ozs-hero::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background-image: radial-gradient(color-mix(in srgb, var(--ozs-accent) 28%, transparent) 1.2px, transparent 1.3px);
+	background-size: 22px 22px;
+	-webkit-mask-image: linear-gradient(115deg, transparent 45%, #000 90%);
+	mask-image: linear-gradient(115deg, transparent 45%, #000 90%);
+	pointer-events: none;
+}
+.ozs-hero > * { position: relative; }
+
+.ozs-eyebrow {
+	display: inline-block;
+	font-family: var(--ozs-mono);
+	font-size: 0.8rem !important;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ozs-accent);
+	background: var(--ozs-accent-soft);
+	border: 1px solid color-mix(in srgb, var(--ozs-accent) 35%, transparent);
+	border-radius: 999px;
+	padding: 0.35rem 0.8rem;
+}
+.ozs-hero .ozs-lede { color: var(--ozs-muted); max-width: 40rem; font-size: var(--wp--preset--font-size--large); }
+
+/* Outline button style */
+.wp-block-button.is-style-outline > .wp-block-button__link {
+	background: transparent;
+	color: var(--ozs-accent);
+	border: 2px solid currentColor;
+	padding: calc(0.7rem - 2px) calc(1.3rem - 2px);
+}
+.wp-block-button.is-style-outline > .wp-block-button__link:hover {
+	background: var(--ozs-accent-soft);
+	color: var(--ozs-accent-hover);
+}
+
+/* ------------------------------------------------------------------
+ * Cards (summit days, facts, tickets)
+ * ---------------------------------------------------------------- */
+.ozs-card {
+	background: var(--ozs-surface);
+	border: 1px solid var(--ozs-border);
+	border-radius: var(--ozs-radius);
+	box-shadow: var(--wp--preset--shadow--card);
+	height: 100%;
+}
+.ozs-card > :first-child { margin-top: 0; }
+
+.ozs-day .ozs-day-date {
+	font-family: var(--ozs-mono);
+	font-size: 0.85rem;
+	color: var(--ozs-muted);
+	margin: 0;
+}
+.ozs-day .ozs-day-num {
+	font-family: var(--ozs-mono);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ozs-accent);
+	margin: 0;
+}
+.ozs-day h3 { margin-block: 0.4rem 0; }
+.ozs-day.is-hackathon { border-top: 4px solid var(--wp--preset--color--highlight); }
+.ozs-day.is-hackathon .ozs-day-num { color: var(--wp--preset--color--highlight); }
+
+.ozs-fact { text-align: left; }
+.ozs-fact .ozs-fact-num { font-size: 2.25rem; font-weight: 800; line-height: 1; color: var(--ozs-accent); margin: 0; }
+.ozs-fact .ozs-fact-label { color: var(--ozs-muted); margin: 0.35rem 0 0; font-size: 0.95rem; }
+
+.ozs-section-muted { background: var(--ozs-surface); border-block: 1px solid var(--ozs-border); }
+
+/* Four day cards fill the row (auto-fit collapses empty tracks); facts stay 3-up. */
+.ozs-days { grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)) !important; }
+.ozs-facts { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+@media (max-width: 379px) {
+	.ozs-facts { grid-template-columns: minmax(0, 1fr) !important; }
+}
+@media (max-width: 599px) {
+	.ozs-fact { padding: 1rem !important; }
+	.ozs-fact .ozs-fact-num { font-size: 1.75rem; }
+	.ozs-fact .ozs-fact-label { font-size: 0.8rem; }
+}
+
+/* ------------------------------------------------------------------
+ * Sponsors — each logo sits on a light tile so dark artwork stays
+ * legible in dark mode; tiers scale the logo height.
+ * ---------------------------------------------------------------- */
+.ozs-tier { margin-block-start: var(--wp--preset--spacing--50); }
+.ozs-tier-label {
+	font-family: var(--ozs-mono);
+	font-size: 0.8rem !important;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ozs-muted);
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+.ozs-tier-label::after { content: ""; flex: 1; height: 1px; background: var(--ozs-border); }
+
+.ozs-logos {
+	display: grid !important;
+	gap: 1rem;
+	grid-template-columns: repeat(auto-fill, minmax(var(--ozs-tile-min, 160px), 1fr));
+}
+.ozs-logos > .wp-block-image,
+.ozs-logos > figure {
+	margin: 0 !important;
+	display: grid;
+	place-items: center;
+	background: var(--wp--preset--color--logo-tile);
+	border: 1px solid var(--ozs-border);
+	border-radius: var(--ozs-radius);
+	padding: 1.25rem 1.5rem;
+	min-height: calc(var(--ozs-logo-h, 48px) + 2.5rem);
+	transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ozs-logos > figure:hover { transform: translateY(-2px); box-shadow: var(--wp--preset--shadow--card); border-color: var(--ozs-accent); }
+.ozs-logos img {
+	max-height: var(--ozs-logo-h, 48px) !important;
+	width: auto !important;
+	max-width: 100% !important;
+	height: auto !important;
+	object-fit: contain;
+	/* Several logos ship on an opaque white box; multiply melts it into the tile. */
+	mix-blend-mode: multiply;
+}
+/* A linked logo keeps a real box so its focus outline shows. */
+.ozs-logos a { display: grid; place-items: center; width: 100%; height: 100%; border-radius: inherit; }
+
+.ozs-tier-diamond { --ozs-logo-h: 96px; --ozs-tile-min: 280px; }
+.ozs-tier-gold    { --ozs-logo-h: 72px; --ozs-tile-min: 240px; }
+.ozs-tier-silver  { --ozs-logo-h: 56px; --ozs-tile-min: 220px; }
+.ozs-tier-bronze  { --ozs-logo-h: 40px; --ozs-tile-min: 130px; }
+.ozs-tier-diamond .ozs-logos { grid-template-columns: minmax(0, 1fr); }
+.ozs-tier-diamond .ozs-logos > figure { padding: 2rem; }
+
+/* ------------------------------------------------------------------
+ * Footer — brand block plus two link columns; on phones the brand spans
+ * the width and the two link lists sit side by side. A ruled bottom bar
+ * carries the copyright line.
+ * ---------------------------------------------------------------- */
+.ozs-footer { border-top: 1px solid var(--ozs-border); background: var(--ozs-surface); color: var(--ozs-muted); font-size: 0.95rem; }
+.ozs-footer-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--wp--preset--spacing--50);
+	align-items: start;
+}
+.ozs-footer-grid > * { margin: 0 !important; }
+.ozs-footer-brand > * { margin: 0 !important; }
+.ozs-footer-brand .wp-block-site-logo { margin-bottom: 0.9rem !important; }
+.ozs-footer .ozs-footer-title { color: var(--ozs-text); font-weight: 700; font-size: 1.05rem; line-height: 1.35; }
+.ozs-footer .ozs-footer-meta { font-family: var(--ozs-mono); font-size: 0.8rem; letter-spacing: 0.02em; margin-top: 0.35rem !important; }
+.ozs-footer .ozs-footer-heading {
+	font-family: var(--ozs-mono);
+	font-size: 0.75rem !important;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ozs-muted);
+	margin: 0 0 0.75rem !important;
+}
+.ozs-footer .ozs-footer-links { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.15rem; }
+.ozs-footer .ozs-footer-links a {
+	display: inline-block;
+	padding: 0.3rem 0;
+	color: var(--ozs-text);
+	text-decoration: none;
+}
+.ozs-footer .ozs-footer-links a:hover { color: var(--ozs-accent); text-decoration: underline; text-underline-offset: 3px; }
+.ozs-footer-bottom {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 0.5rem 2rem;
+	margin-top: var(--wp--preset--spacing--50) !important;
+	padding-top: var(--wp--preset--spacing--30);
+	border-top: 1px solid var(--ozs-border);
+	font-size: 0.85rem;
+}
+.ozs-footer-bottom > * { margin: 0 !important; }
+
+@media (max-width: 781px) {
+	.ozs-footer-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem 1.5rem; }
+	.ozs-footer-brand { grid-column: 1 / -1; }
+	/* Full-height tap targets on touch screens. */
+	.ozs-footer .ozs-footer-links a { padding: 0.65rem 0; min-height: 44px; box-sizing: border-box; }
+	.ozs-footer-bottom { flex-direction: column; }
+}
+
+/* ------------------------------------------------------------------
+ * Content niceties
+ * ---------------------------------------------------------------- */
+.entry-content table,
+.wp-block-table table { border-collapse: collapse; width: 100%; }
+.wp-block-table td, .wp-block-table th { border-color: var(--ozs-border); }
+hr, .wp-block-separator { border-color: var(--ozs-border); }
+input, select, textarea {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	border: 1px solid var(--ozs-border);
+	border-radius: 8px;
+}
+
+/* ------------------------------------------------------------------
+ * WooCommerce
+ * ---------------------------------------------------------------- */
+.woocommerce ul.products li.product,
+.wc-block-product-template > li,
+.wc-block-grid__product {
+	background: var(--ozs-surface);
+	border: 1px solid var(--ozs-border);
+	border-radius: var(--ozs-radius);
+	padding: 1rem !important;
+	box-shadow: var(--wp--preset--shadow--card);
+}
+.wc-block-product-template > li .wc-block-components-product-image,
+.wc-block-product-template > li .wp-block-woocommerce-product-image {
+	background: var(--wp--preset--color--logo-tile);
+	border-radius: 8px;
+	overflow: hidden;
+}
+.wc-block-components-product-price,
+.woocommerce .price,
+.wp-block-woocommerce-product-price { font-family: var(--ozs-mono); color: var(--ozs-text) !important; font-weight: 700; }
+
+.woocommerce-message, .woocommerce-info, .woocommerce-error,
+.wc-block-components-notice-banner {
+	background: var(--ozs-surface) !important;
+	color: var(--ozs-text) !important;
+	border-color: var(--ozs-accent) !important;
+}
+.wc-block-components-sidebar-layout .wc-block-components-main,
+.wc-block-components-totals-wrapper,
+.wc-block-components-panel { color: var(--ozs-text); }
+.wc-block-components-text-input input,
+.wc-block-components-combobox .wc-block-components-combobox-control input,
+.wc-blocks-components-select .wc-blocks-components-select__select {
+	background: var(--ozs-surface) !important;
+	color: var(--ozs-text) !important;
+	border-color: var(--ozs-border) !important;
+}
+.wc-block-components-text-input label,
+.wc-blocks-components-select .wc-blocks-components-select__label { color: var(--ozs-muted) !important; }
+
+/* Registration: the ticket products render as two side-by-side ticket cards.
+ * WooCommerce's responsive template collapses to one narrow track inside a
+ * constrained column, so the grid is set explicitly. */
+.ozs-tickets.ozs-tickets {
+	align-self: stretch;
+	width: 100%;
+}
+.ozs-tickets .wc-block-product-template {
+	display: grid !important;
+	width: 100% !important;
+	max-width: 760px !important;
+	margin-inline: auto !important;
+	grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	gap: 1.5rem !important;
+	padding: 0 !important;
+}
+@media (max-width: 599px) {
+	.ozs-tickets .wc-block-product-template { grid-template-columns: minmax(0, 1fr) !important; }
+}
+.ozs-tickets .wc-block-product-template > li {
+	width: auto !important;
+	max-width: none !important;
+	margin: 0 !important;
+	padding: 1.75rem !important;
+	text-align: left !important;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.ozs-tickets .wc-block-product-template > li:hover { transform: translateY(-2px); border-color: var(--ozs-accent); }
+.ozs-tickets .wc-block-product-template > li:first-child { border: 2px solid var(--ozs-accent); }
+/* Every ticket shows the same summit logo as its product image: redundant here. */
+.ozs-tickets .wc-block-components-product-image,
+.ozs-tickets .wp-block-woocommerce-product-image { display: none !important; }
+.ozs-tickets .wp-block-post-title { font-size: 1.375rem !important; margin: 0 !important; text-align: left !important; }
+.ozs-tickets .wp-block-post-title a { color: var(--ozs-text); text-decoration: none; }
+/* The whole card opens the ticket's page, where options are chosen. */
+.ozs-tickets .wp-block-post-title a::before { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.ozs-tickets .wc-block-components-product-price,
+.ozs-tickets .wp-block-woocommerce-product-price { font-size: 2rem !important; text-align: left !important; margin: 0 !important; }
+.ozs-tickets .wc-block-product-template > li::after {
+	content: "Choose options \2192";
+	margin-top: auto;
+	padding-top: 0.75rem;
+	font-weight: 700;
+	color: var(--ozs-accent);
+}
+
+/* Single product */
+.single-product .product .woocommerce-product-gallery img,
+.woocommerce div.product div.images img {
+	width: auto !important;
+	max-width: 300px;
+	margin-inline: auto;
+	border-radius: var(--ozs-radius);
+	background: var(--wp--preset--color--logo-tile);
+}
+
+/* ------------------------------------------------------------------
+ * My Calendar — its reset stylesheet hard-codes white surfaces and
+ * #313233 text, so these selectors are doubled (.mc-main.mc-main) to win
+ * without fighting every rule with !important. The week grid scrolls
+ * sideways on narrow screens instead of crushing.
+ * ---------------------------------------------------------------- */
+.mc-main.mc-main { color: var(--ozs-text); background: transparent; }
+.mc-main.mc-main .heading,
+.mc-main.mc-main .heading span {
+	color: var(--ozs-text);
+	font-size: var(--wp--preset--font-size--x-large);
+	font-weight: 700;
+	text-align: left;
+}
+.mc-main.mc-main .my-calendar-table {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	border: 1px solid var(--ozs-border);
+	border-radius: var(--ozs-radius);
+	border-collapse: separate;
+	border-spacing: 0;
+	overflow: hidden;
+}
+.mc-main.mc-main .my-calendar-table th {
+	background: var(--ozs-base);
+	color: var(--ozs-muted);
+	font-family: var(--ozs-mono);
+	font-size: 0.75rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	border-color: var(--ozs-border);
+}
+.mc-main.mc-main .my-calendar-table td {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	border-color: var(--ozs-border);
+}
+.mc-main.mc-main .my-calendar-table td.no-events,
+.mc-main.mc-main .my-calendar-table td.past-day { background: var(--ozs-base); }
+.mc-main.mc-main .mc-date-container,
+.mc-main.mc-main .mc-date,
+.mc-main.mc-main .mc-date span { background: transparent; color: var(--ozs-muted); }
+.mc-main.mc-main td.has-events .mc-date,
+.mc-main.mc-main td.has-events .mc-date span { color: var(--ozs-text); font-weight: 700; }
+.mc-main.mc-main .current-day,
+.mc-main.mc-main .current-day .mc-date { background: var(--ozs-accent-soft); }
+/* Category colours are painted onto the chip itself, hence !important. */
+.mc-main.mc-main .calendar-event .event-title,
+.mc-main.mc-main .calendar-event .event-title a,
+.mc-main.mc-main .calendar-event .event-title button {
+	background: var(--ozs-accent-soft) !important;
+	color: var(--ozs-text) !important;
+	border-left: 3px solid var(--ozs-accent);
+	border-radius: 4px;
+	font-size: 0.875rem;
+}
+.mc-main.mc-main .mc-content,
+.mc-main.mc-main .details,
+.mc-main.mc-main .mc-list,
+.mc-main.mc-main .mc-list li,
+.mc-main.mc-main .list-event {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	border-color: var(--ozs-border);
+}
+.mc-main.mc-main .mc-navigation-button,
+.mc-main.mc-main .my-calendar-nav a,
+.mc-main.mc-main .my-calendar-nav button,
+.mc-main.mc-main .mc-print a,
+.mc-main.mc-main .category-key a,
+.mc-main.mc-main .category-key button,
+.mc-main.mc-main .mc-format a,
+.mc-main.mc-main .mc-time a,
+.mc-main.mc-main .mc-time span {
+	background: var(--ozs-surface);
+	color: var(--ozs-text);
+	border: 1px solid var(--ozs-border);
+	border-radius: 8px;
+	box-shadow: none;
+}
+.mc-main.mc-main .mc-navigation-button:hover,
+.mc-main.mc-main .my-calendar-nav a:hover,
+.mc-main.mc-main .mc-print a:hover { border-color: var(--ozs-accent); color: var(--ozs-accent); }
+.mc-main.mc-main .mc-active,
+.mc-main.mc-main .mc-navigation-button.mc-active,
+.mc-main.mc-main .mc-format .mc-active,
+.mc-main.mc-main .mc-time .mc-active,
+.mc-main.mc-main .category-key .current a,
+.mc-main.mc-main [aria-current="true"] {
+	background: var(--ozs-accent);
+	color: var(--ozs-on-accent);
+	border-color: var(--ozs-accent);
+}
+@media (max-width: 781px) {
+	.mc-main.mc-main .my-calendar-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ------------------------------------------------------------------
+ * Site-owner customizations carried over from the previous theme's
+ * Additional CSS (commerce behaviour, not cosmetics). Change here, or
+ * in Appearance > Editor > Styles > Additional CSS.
+ * ---------------------------------------------------------------- */
+.woocommerce-products-header,
+.archive-description,
+.related.products,
+.product_meta,
+.asnp-productList-container,
+.wc-block-cart-item__prices { display: none !important; }
+/* Not carried over: the old CSS also listed wc-block-checkout__guest-checkout-notice,
+ * but without its leading dot, so it never hid anything on the old site. */
+
+/* Products are chosen on their own page (variants/bundles), not added from lists. */
+.ajax_add_to_cart,
+.add_to_cart_button { display: none !important; }
+
+td.section-title > h3 { font-size: 1em !important; }
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

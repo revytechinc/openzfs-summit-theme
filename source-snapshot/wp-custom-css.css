@@ -1,0 +1,52 @@
+/*
+ * Verbatim copy of the "Additional CSS" from the previous theme on
+ * summit.openzfs.org, kept as a reference for what the new theme carries
+ * over. NOT loaded by the theme. See README "Moving from The Conference".
+ */
+.woocommerce-products-header {display: none;}
+.page .entry-title { display: none; }
+.post .entry-title { display: none; }
+.entry-title { display: none; }
+add-to-cart-button:{color: white; background-color: #ffbf00;} /* NOSONAR -- verbatim reference of the old site's CSS, never loaded; the selector is also invalid so it never applied there either */
+
+.archive-description {display: none;}
+
+.related.products {display: none;}
+
+td.section-title > h3 {font-size: 1em !important;}
+
+.product_meta {display: none !important; }
+
+.ajax_add_to_cart {
+	display: none !important;
+}
+
+.add_to_cart_button {
+	display: none !important;
+}
+
+.woocommerce div.product div.images img {
+	width: auto !important;
+	max-width: 300px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.asnp-productList-container{
+	display: none !important;
+}
+
+.wp-element-button, .wp-block-button__link {
+	background-color: #57b9a8 !important;
+  border-radius: 10px !important;
+	font-weight: bold !important;
+	font-size: 1.1em;
+}
+
+.wc-block-cart-item__prices {
+	display: none !important;
+}
+
+wc-block-checkout__guest-checkout-notice {
+	display: none !important;
+}
