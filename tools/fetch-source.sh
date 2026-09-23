@@ -7,7 +7,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/../source-snapshot/export"
 mkdir -p "$OUT/media" "$OUT/variations"
 cd "$OUT"
-rm -f media-missing.txt media-dead.txt
+rm -f media-missing.txt media-dead.txt export.ok
 curl -fsS "$S/wp-json/wp/v2/pages?per_page=100&context=view" -o pages.json
 curl -fsS "$S/wp-json/wp/v2/media?per_page=100" -o media.json
 curl -fsS "$S/wp-json/wc/store/v1/products?per_page=100" -o products.json
@@ -41,15 +41,17 @@ for x in json.load(open('products.json')):
   curl -fsS "$S/wp-json/wc/store/v1/products/$vid" -o "variations/$vid.json"
 done
 # Collect every original image URL: REST media, product images, and any
-# /wp-content/(uploads|logos)/ URL in page bodies or the rendered front page.
-python3 - "$HERE/../source-snapshot" > media-urls.txt <<'PY'
-import json,re,sys,glob
-snap=sys.argv[1]; urls=set()
+# /wp-content/(uploads|logos)/ URL in the page bodies, the rendered front page
+# and the product pages -- all downloaded above, so the result depends only on
+# this run (the sponsor logos live only in the rendered front page).
+python3 - > media-urls.txt <<'PY'
+import json,re,glob
+urls=set()
 for m in json.load(open('media.json')): urls.add(m['source_url'])
 for p in json.load(open('products.json')):
     for i in p['images']: urls.add(i['src'])
 texts=[p['content']['rendered'] for p in json.load(open('pages.json'))]
-texts+= [open(f).read() for f in glob.glob(snap+'/page-*.html')]
+texts+=[open(f).read() for f in ['front-page.html']+sorted(glob.glob('product-pages/*.html'))]
 for t in texts:
     for u in re.findall(r'https://summit\.openzfs\.org/wp-content/(?:uploads|logos)/[^"\'\s)]+?\.(?:png|jpe?g|webp|gif|svg)',t):
         # skip generated thumbnails (-NNNxNNN) whose original we also have
@@ -110,3 +112,6 @@ if [ -s media-missing.txt ]; then
   echo "WARNING: $(wc -l < media-missing.txt) media URL(s) failed to download (media-missing.txt);" >&2
   echo "         import-content.sh will refuse to run unless ZFS_IMPORT_FORCE=1." >&2
 fi
+# Last step: mark the export complete. import-content.sh refuses an export
+# without it (an interrupted run, or one from an older layout).
+echo "layout=2 fetched=$(date -u +%FT%TZ)" > export.ok

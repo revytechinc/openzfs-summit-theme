@@ -27,9 +27,9 @@ NL='
 for v in "$HOST" "$JAIL" "$WPUSER" "$WPPATH" "$ZFS_IMPORT_FORCE"; do
   case "$v" in *"$NL"*) die "values must not contain a newline" ;; esac
 done
-printf '%s' "$HOST" | grep -Eqx '[A-Za-z0-9._@-]+' || die "invalid HOST: $HOST (expected an ssh host name, letters digits . _ @ -)"
-printf '%s' "$JAIL" | grep -Eqx '[A-Za-z0-9_.-]+' || die "invalid JAIL: $JAIL (expected letters, digits, . _ -)"
-printf '%s' "$WPUSER" | grep -Eqx '[A-Za-z0-9_.-]+' || die "invalid WPUSER: $WPUSER (expected letters, digits, . _ -)"
+printf '%s' "$HOST" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9._@-]*' || die "invalid HOST: $HOST (expected an ssh host name: letters, digits, . _ @ -, not starting with -)"
+printf '%s' "$JAIL" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9_.-]*' || die "invalid JAIL: $JAIL (expected letters, digits, . _ -, not starting with -)"
+printf '%s' "$WPUSER" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9_.-]*' || die "invalid WPUSER: $WPUSER (expected letters, digits, . _ -, not starting with -)"
 printf '%s' "$WPPATH" | grep -Eqx '/[A-Za-z0-9_./-]+' || die "invalid WPPATH: $WPPATH (expected an absolute path)"
 case "$WPPATH" in *..*) die "WPPATH must not contain '..': $WPPATH" ;; esac
 case "$ZFS_IMPORT_FORCE" in 0|1) ;; *) die "ZFS_IMPORT_FORCE must be 0 or 1" ;; esac
@@ -39,7 +39,10 @@ STAGE=/var/tmp/zfsimport
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 EXPORT="$HERE/../source-snapshot/export"
-[ -f "$EXPORT/pages.json" ] || "$HERE/fetch-source.sh"
+# Fetch when there is no complete export of the current layout.
+grep -qs '^layout=2 ' "$EXPORT/export.ok" || "$HERE/fetch-source.sh"
+grep -qs '^layout=2 ' "$EXPORT/export.ok" || die "fetch-source.sh did not complete; no import run"
+
 
 if [ -s "$EXPORT/media-dead.txt" ]; then
   echo "WARNING: the source site itself returns 404/410 for these media URLs;" >&2

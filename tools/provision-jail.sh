@@ -30,15 +30,15 @@ check() { # name value extended-regex
 "*) echo "provision-jail.sh: bad $1: contains a newline" >&2; exit 2 ;; esac
 	printf '%s' "$2" | grep -Eq "^($3)\$" || { echo "provision-jail.sh: bad $1: '$2' (must match: $3)" >&2; exit 2; }
 }
-check HOST "$HOST" '[A-Za-z0-9._@-]+'
-check JAIL "$JAIL" '[A-Za-z0-9_.-]+'
+check HOST "$HOST" '[A-Za-z0-9][A-Za-z0-9._@-]*'
+check JAIL "$JAIL" '[A-Za-z0-9][A-Za-z0-9_.-]*'
 check FQDN "$FQDN" '[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?'
 check ADMIN_EMAIL "$ADMIN_EMAIL" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+'
 check WPPATH "$WPPATH" '/[A-Za-z0-9_/.-]+'
 case "$WPPATH" in *..*) echo "provision-jail.sh: bad WPPATH: '$WPPATH'" >&2; exit 2 ;; esac
-check ADMIN_USER "$ADMIN_USER" '[A-Za-z0-9_.-]+'
+check ADMIN_USER "$ADMIN_USER" '[A-Za-z0-9][A-Za-z0-9_.-]*'
 check THEME_REPO "$THEME_REPO" 'https://[A-Za-z0-9._/-]+'
-check THEME_REF "$THEME_REF" '[A-Za-z0-9._/-]+'
+check THEME_REF "$THEME_REF" '[A-Za-z0-9][A-Za-z0-9._/-]*'
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 PROV="$HERE/provision"

@@ -87,7 +87,8 @@ nginx and WordPress 7.1.2. It then clones this theme from GitHub into the
 site and activates it.
 
 ```sh
-HOST=<jail host> JAIL=<jail> FQDN=<site name> ADMIN_EMAIL=<you@example.org>     tools/provision-jail.sh
+HOST=<jail host> JAIL=<jail> FQDN=<site name> ADMIN_EMAIL=<you@example.org> \
+    tools/provision-jail.sh
 ```
 
 The WordPress admin user is `admin` (change it with `ADMIN_USER`). Its

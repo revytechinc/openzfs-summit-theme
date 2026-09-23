@@ -35,7 +35,7 @@ check ADMIN_EMAIL "$ADMIN_EMAIL" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+'
 check WPPATH "$WPPATH" '/[A-Za-z0-9_/.-]+'
 case "$WPPATH" in *..*) echo "setup.sh: bad WPPATH: '$WPPATH'" >&2; exit 2 ;; esac
 check WP_VERSION "$WP_VERSION" '[0-9]+(\.[0-9]+){1,2}'
-check ADMIN_USER "$ADMIN_USER" '[A-Za-z0-9_.-]+'
+check ADMIN_USER "$ADMIN_USER" '[A-Za-z0-9][A-Za-z0-9_.-]*'
 check SITE_TITLE "$SITE_TITLE" "[A-Za-z0-9 &.,:()-]+"
 
 WP="env HOME=/tmp /usr/local/bin/wp --path=$WPPATH"
@@ -87,9 +87,12 @@ fi
 # nginx. Cloudflare's published edge ranges give nginx the real client
 # address, and decide whether a request came through Cloudflare at all (only
 # then is its CF-Visitor header believed).
-CF_RANGES=$(for u in ips-v4 ips-v6; do fetch -qo - "https://www.cloudflare.com/$u"; echo; done |
-	grep -E '^[0-9a-fA-F.:]+/[0-9]+$' || true)
-if [ -z "$CF_RANGES" ]; then
+# Each list must arrive on its own: with only one of them, visitors reaching
+# Cloudflare over the other address family would be misjudged.
+CF_V4=$(fetch -qo - https://www.cloudflare.com/ips-v4 | grep -E '^[0-9.]+/[0-9]+$' || true)
+CF_V6=$(fetch -qo - https://www.cloudflare.com/ips-v6 | grep -E '^[0-9a-fA-F:]+/[0-9]+$' || true)
+CF_RANGES=$(printf '%s\n%s\n' "$CF_V4" "$CF_V6")
+if [ -z "$CF_V4" ] || [ -z "$CF_V6" ]; then
 	echo "setup.sh: could not fetch Cloudflare's address ranges from" >&2
 	echo "  https://www.cloudflare.com/ips-v4 and /ips-v6. Check the jail's outbound" >&2
 	echo "  HTTPS and DNS (fetch -o - https://www.cloudflare.com/ips-v4), then re-run." >&2

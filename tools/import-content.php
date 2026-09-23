@@ -52,7 +52,10 @@ function zfs_forced() {
  * zfs_import_version marker option is absent, or when forced.
  */
 const ZFS_IMPORT_VERSION = '1';
-$zfs_first_import        = ( false === get_option( 'zfs_import_version' ) ) || zfs_forced();
+// A site imported by an earlier version has page markers but no version
+// option; that is not a first import either.
+$zfs_marked_pages        = get_posts( array( 'post_type' => 'page', 'post_status' => 'any', 'meta_key' => '_zfs_import_hash', 'fields' => 'ids', 'posts_per_page' => 1 ) );
+$zfs_first_import        = ( false === get_option( 'zfs_import_version' ) && ! $zfs_marked_pages ) || zfs_forced();
 if ( ! $zfs_first_import ) {
 	zfs_log( 'Not a first import (zfs_import_version set): skipping site options, menus and default-post cleanup (ZFS_IMPORT_FORCE=1 re-applies them)' );
 }
@@ -724,14 +727,20 @@ function zfs_logos_in( $html ) {
 }
 
 function zfs_sponsor_blocks( $tiers, $center = false ) {
-	global $zfs_media;
+	global $zfs_media, $zfs_unrewritten;
 	$out = array();
 	foreach ( $tiers as $tier => $logos ) {
 		$out[] = zfs_heading_block( esc_html( $tier ) );
 		foreach ( $logos as $l ) {
-			if ( ! empty( $zfs_media[ $l['src'] ] ) ) {
-				$out[] = zfs_image_block( $zfs_media[ $l['src'] ], $l['alt'], $l['width'], $center ? 'center' : null );
+			if ( empty( $zfs_media[ $l['src'] ] ) ) {
+				// A sponsor must not vanish quietly: count it like any other
+				// source URL that could not be rewritten, so the page write
+				// is refused unless forced.
+				++$zfs_unrewritten;
+				zfs_log( "  sponsor logo not imported: {$l['src']}" );
+				continue;
 			}
+			$out[] = zfs_image_block( $zfs_media[ $l['src'] ], $l['alt'], $l['width'], $center ? 'center' : null );
 		}
 	}
 	return implode( "\n\n", $out );
